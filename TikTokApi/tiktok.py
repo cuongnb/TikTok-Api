@@ -202,6 +202,79 @@ class TikTokApi:
             parsed_data["referrer"],
         )
 
+    def get_request_info(self, **kwargs):
+        """Makes requests to TikTok and returns their JSON.
+
+		This is all handled by the package so it's unlikely
+		you will need to use this.
+		"""
+        (
+            region,
+            language,
+            proxy,
+            maxCount,
+            device_id,
+        ) = self.__process_kwargs__(kwargs)
+        kwargs["custom_device_id"] = device_id
+        if self.request_delay is not None:
+            time.sleep(self.request_delay)
+
+        if self.proxy is not None:
+            proxy = self.proxy
+
+        if kwargs.get("custom_verifyFp") == None:
+            if self.custom_verifyFp != None:
+                verifyFp = self.custom_verifyFp
+            else:
+                verifyFp = "verify_khr3jabg_V7ucdslq_Vrw9_4KPb_AJ1b_Ks706M8zIJTq"
+        else:
+            verifyFp = kwargs.get("custom_verifyFp")
+
+        if self.signer_url is None:
+            kwargs["custom_verifyFp"] = verifyFp
+            verify_fp, device_id, signature = self.browser.sign_url(**kwargs)
+            userAgent = self.browser.userAgent
+            referrer = self.browser.referrer
+        else:
+            verify_fp, device_id, signature, userAgent, referrer = self.external_signer(
+                kwargs["url"],
+                custom_device_id=kwargs.get("custom_device_id"),
+                verifyFp=kwargs.get("custom_verifyFp", verifyFp),
+            )
+
+        query = {"verifyFp": verify_fp, "device_id": device_id, "_signature": signature}
+        url = "{}&{}".format(kwargs["url"], urlencode(query))
+
+        h = requests.head(
+            url,
+            headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
+            proxies=self.__format_proxy(proxy),
+            **self.requests_extra_kwargs
+        )
+        csrf_session_id = h.cookies["csrf_session_id"]
+        csrf_token = h.headers["X-Ware-Csrf-Token"].split(",")[1]
+        kwargs["csrf_session_id"] = csrf_session_id
+
+        headers = {
+            "authority": "m.tiktok.com",
+            "method": "GET",
+            "path": url.split("tiktok.com")[1],
+            "scheme": "https",
+            "accept": "application/json, text/plain, */*",
+            "accept-encoding": "gzip, deflate, br",
+            "accept-language": "en-US,en;q=0.9",
+            "origin": referrer,
+            "referer": referrer,
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "sec-gpc": "1",
+            "user-agent": userAgent,
+            "x-secsdk-csrf-token": csrf_token,
+        }
+        cookies = self.get_cookies(**kwargs)
+        return url, headers, cookies
+
     def get_data(self, **kwargs) -> dict:
         """Makes requests to TikTok and returns their JSON.
 
